@@ -135,6 +135,8 @@ int main(int argc, char** argv) {
   double tot_len_ratio = 0;
   double mean_srclen_multiplier = 0;
   vector<double> probs;
+  
+  // main loop - default=5 iter
   for (int iter = 0; iter < ITERATIONS; ++iter) {
     const bool final_iteration = (iter == (ITERATIONS - 1));
     cerr << "ITERATION " << (iter + 1) << (final_iteration ? " (FINAL)" : "") << endl;
@@ -153,6 +155,8 @@ int main(int argc, char** argv) {
     double c0 = 0;
     double emp_feat = 0;
     double toks = 0;
+    
+    // each parallel sentence 
     while(true) {
       getline(in, line);
       if (!in) break;
@@ -162,6 +166,15 @@ int main(int argc, char** argv) {
       src.clear(); trg.clear();
       ParseLine(line, &src, &trg);
       if (is_reverse) swap(src, trg);
+      
+      cerr << "src="; 
+      std::copy(src.begin(), src.end(), std::ostream_iterator<unsigned>(std::cerr, " "));
+      cerr << endl;
+
+      cerr << "trg="; 
+      std::copy(trg.begin(), trg.end(), std::ostream_iterator<unsigned>(std::cerr, " "));
+      cerr << endl;
+      
       if (src.size() == 0 || trg.size() == 0) {
         cerr << "Error in line " << lc << "\n" << line << endl;
         return 1;
@@ -174,6 +187,8 @@ int main(int argc, char** argv) {
         ++size_counts[make_pair<short,short>(trg.size(), src.size())];
       bool first_al = true;  // used when printing alignments
       toks += trg.size();
+      
+      // EACH TARGET
       for (unsigned j = 0; j < trg.size(); ++j) {
         const unsigned& f_j = trg[j];
         double sum = 0;
@@ -192,6 +207,10 @@ int main(int argc, char** argv) {
           probs[i] = s2t.prob(src[i-1], f_j) * prob_a_i;
           sum += probs[i];
         }
+        cerr << "probs="; 
+        std::copy(probs.begin(), probs.end(), std::ostream_iterator<double>(std::cerr, " "));
+        cerr << endl;
+        
         if (final_iteration) {
           double max_p = -1;
           int max_index = -1;
@@ -225,9 +244,9 @@ int main(int argc, char** argv) {
           }
         }
         likelihood += log(sum);
-      }
+      } // for (unsigned j = 0; j
       if (final_iteration) cout << endl;
-    }
+    } // while(true) {
 
     // log(e) = 1.0
     double base2_likelihood = likelihood / log(2);
@@ -272,7 +291,8 @@ int main(int argc, char** argv) {
       //prob_align_null += (c0 / toks) * 0.2;
       prob_align_not_null = 1.0 - prob_align_null;
     }
-  }
+  } // for (int iter = 0; iter < ITERATIONS; ++iter) {
+    
   if (!conditional_probability_filename.empty()) {
     cerr << "conditional probabilities: " << conditional_probability_filename << endl;
     s2t.ExportToFile(conditional_probability_filename.c_str(), d);
