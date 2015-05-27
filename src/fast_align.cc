@@ -24,6 +24,7 @@
 #include "src/corpus.h"
 #include "src/ttables.h"
 #include "src/da.h"
+#include "src/Parameters.h"
 
 using namespace std;
 
@@ -123,27 +124,45 @@ int main(int argc, char** argv) {
          << "  -T: starting lambda for diagonal distance parameter (default = 4)\n";
     return 1;
   }
-  bool use_null = !no_null_word;
+  
+  Parameters params;
+  params.use_null = !no_null_word;
+  
   if (variational_bayes && alpha <= 0.0) {
     cerr << "--alpha must be > 0\n";
     return 1;
   }
-  double prob_align_not_null = 1.0 - prob_align_null;
-  const unsigned kNULL = d.Convert("<eps>");
+  params.prob_align_not_null = 1.0 - prob_align_null;
   TTable s2t, t2s;
   unordered_map<pair<short, short>, unsigned, PairHash> size_counts;
-  double tot_len_ratio = 0;
-  double mean_srclen_multiplier = 0;
-  vector<double> probs;
   
   // main loop - default=5 iter
   for (int iter = 0; iter < ITERATIONS; ++iter) {
+
+  } // for (int iter = 0; iter < ITERATIONS; ++iter) {
+    
+  if (!conditional_probability_filename.empty()) {
+    cerr << "conditional probabilities: " << conditional_probability_filename << endl;
+    s2t.ExportToFile(conditional_probability_filename.c_str(), d);
+  }
+  return 0;
+}
+
+void ProcessInteration(unordered_map<pair<short, short>, unsigned, PairHash> &size_counts, 
+                      TTable &s2t, TTable &t2s,
+                      int iter, 
+                      const Parameters &params)
+{
+    const unsigned kNULL = d.Convert("<eps>");
+
+    double tot_len_ratio = 0;
+
     const bool final_iteration = (iter == (ITERATIONS - 1));
     cerr << "ITERATION " << (iter + 1) << (final_iteration ? " (FINAL)" : "") << endl;
     ifstream in(input.c_str());
     if (!in) {
       cerr << "Can't read " << input << endl;
-      return 1;
+      exit(1);
     }
     double likelihood = 0;
     double denom = 0.0;
@@ -177,12 +196,14 @@ int main(int argc, char** argv) {
       
       if (src.size() == 0 || trg.size() == 0) {
         cerr << "Error in line " << lc << "\n" << line << endl;
-        return 1;
+        exit(1);
       }
       if (iter == 0)
         tot_len_ratio += static_cast<double>(trg.size()) / static_cast<double>(src.size());
       denom += trg.size();
-      probs.resize(src.size() + 1);
+
+      vector<double> probs(src.size() + 1);
+
       if (iter == 0)
         ++size_counts[make_pair<short,short>(trg.size(), src.size())];
       bool first_al = true;  // used when printing alignments
@@ -192,15 +213,15 @@ int main(int argc, char** argv) {
       for (unsigned j = 0; j < trg.size(); ++j) {
         const unsigned& f_j = trg[j];
         double sum = 0;
-        double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
-        if (use_null) {
+        double prob_a_i = 1.0 / (src.size() + (params.use_null?1:0));  // uniform (model 1)
+        if (params.use_null) {
           if (favor_diagonal) prob_a_i = prob_align_null;
           probs[0] = s2t.prob(kNULL, f_j) * prob_a_i;
           sum += probs[0];
         }
         double az = 0;
         if (favor_diagonal)
-          az = DiagonalAlignment::ComputeZ(j+1, trg.size(), src.size(), diagonal_tension) / prob_align_not_null;
+          az = DiagonalAlignment::ComputeZ(j+1, trg.size(), src.size(), diagonal_tension) / params.prob_align_not_null;
         for (unsigned i = 1; i <= src.size(); ++i) {
           if (favor_diagonal)
             prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(), src.size(), diagonal_tension) / az;
@@ -214,7 +235,7 @@ int main(int argc, char** argv) {
         if (final_iteration) {
           double max_p = -1;
           int max_index = -1;
-          if (use_null) {
+          if (params.use_null) {
             max_index = 0;
             max_p = probs[0];
           }
@@ -232,7 +253,7 @@ int main(int argc, char** argv) {
               cout << (max_index - 1) << '-' << j;
           }
         } else {
-          if (use_null) {
+          if (params.use_null) {
             double count = probs[0] / sum;
             c0 += count;
             s2t.Increment(kNULL, f_j, count);
@@ -253,6 +274,7 @@ int main(int argc, char** argv) {
 
     if (flag) { cerr << endl; }
     if (iter == 0) {
+      double mean_srclen_multiplier = 0;
       mean_srclen_multiplier = tot_len_ratio / lc;
       cerr << "expected target length = source length * " << mean_srclen_multiplier << endl;
     }
@@ -291,11 +313,5 @@ int main(int argc, char** argv) {
       //prob_align_null += (c0 / toks) * 0.2;
       prob_align_not_null = 1.0 - prob_align_null;
     }
-  } // for (int iter = 0; iter < ITERATIONS; ++iter) {
-    
-  if (!conditional_probability_filename.empty()) {
-    cerr << "conditional probabilities: " << conditional_probability_filename << endl;
-    s2t.ExportToFile(conditional_probability_filename.c_str(), d);
-  }
-  return 0;
 }
+

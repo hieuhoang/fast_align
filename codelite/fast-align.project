@@ -25,6 +25,8 @@
     <File Name="../src/fast_align.cc"/>
     <File Name="../src/port.h"/>
     <File Name="../src/ttables.h"/>
+    <File Name="../src/fast_align.h"/>
+    <File Name="../src/Parameters.h"/>
   </VirtualDirectory>
   <Settings Type="Executable">
     <GlobalSettings>
